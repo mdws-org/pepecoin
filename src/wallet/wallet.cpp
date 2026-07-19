@@ -30,6 +30,7 @@
 #include "utilmoneystr.h"
 
 #include <assert.h>
+#include <random>
 
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem.hpp>
@@ -2166,7 +2167,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const int nConfMin
     vector<pair<CAmount, pair<const CWalletTx*,unsigned int> > > vValue;
     CAmount nTotalLower = 0;
 
-    random_shuffle(vCoins.begin(), vCoins.end(), GetRandInt);
+    std::shuffle(vCoins.begin(), vCoins.end(), std::mt19937(GetRandInt(1 << 30)));
 
     BOOST_FOREACH(const COutput &output, vCoins)
     {
