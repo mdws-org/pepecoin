@@ -32,6 +32,7 @@
 #include "validationinterface.h"
 
 #include <array>
+#include <random>
 #include <boost/thread.hpp>
 
 #if defined(NDEBUG)
@@ -1641,7 +1642,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
         // Randomize entries before processing, to prevent an attacker to
         // determine which entries will make it through the rate limit
-        random_shuffle(vAddr.begin(), vAddr.end(), GetRandInt);
+        std::shuffle(vAddr.begin(), vAddr.end(), std::mt19937(GetRandInt(1 << 30)));
 
         BOOST_FOREACH(CAddress& addr, vAddr)
         {
