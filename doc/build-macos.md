@@ -63,3 +63,7 @@ Run it.
 ```sh
 /usr/local/bin/pepecoin-qt
 ```
+
+### macOS (Apple Silicon) — CI build ###
+
+A native arm64 `Pepecoin-Qt.app` is built on every push and pull request by the `macOS arm64` workflow (`.github/workflows/macos-arm64.yml`), which runs on a `macos-15` Apple Silicon runner, links against Homebrew `berkeley-db@5` (5.3.28, so existing `wallet.dat` files stay compatible), packages the app with `macdeployqt`, ad-hoc signs it, and uploads a `.dmg` plus a verification log as a workflow artifact. The workflow is also the reference for building the GUI wallet by hand on an Apple Silicon Mac.

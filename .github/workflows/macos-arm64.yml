@@ -1,0 +1,174 @@
+name: macOS arm64
+
+on:
+  push:
+    branches:
+      - master
+      - ci-macos-arm64
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: macos-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: arm64-macos-native
+    runs-on: macos-15
+    timeout-minutes: 120
+
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
+      APP: Pepecoin-Qt.app
+      VERIFY_LOG: verification.log
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify runner architecture
+        run: |
+          arch="$(uname -m)"
+          echo "uname -m: $arch"
+          test "$arch" = "arm64"
+          sw_vers
+          xcodebuild -version
+          brew --version
+
+      - name: Install dependencies
+        run: |
+          brew install autoconf automake libtool pkg-config boost berkeley-db@5 \
+                       libevent openssl@3 qt@5 protobuf qrencode
+          brew list --versions berkeley-db@5 boost qt@5 protobuf libevent openssl@3 qrencode
+          # wallet.dat compatibility requires Berkeley DB 5.3; refuse anything else
+          brew list --versions berkeley-db@5 | grep -q ' 5\.3\.'
+
+      - name: Export toolchain paths
+        run: |
+          QT5="$(brew --prefix qt@5)"
+          BOOST="$(brew --prefix boost)"
+          BDB="$(brew --prefix berkeley-db@5)"
+          {
+            echo "$(brew --prefix autoconf)/bin"
+            echo "$(brew --prefix automake)/bin"
+            echo "$(brew --prefix libtool)/bin"
+            echo "$QT5/bin"
+          } >> "$GITHUB_PATH"
+          {
+            echo "QT5_PREFIX=$QT5"
+            echo "BOOST_PREFIX=$BOOST"
+            echo "BDB_PREFIX=$BDB"
+            echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig:$(brew --prefix libevent)/lib/pkgconfig:$(brew --prefix protobuf)/lib/pkgconfig:$QT5/lib/pkgconfig"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          ./configure --with-gui=qt5 --disable-tests --disable-bench --without-miniupnpc --disable-zmq \
+                      --with-qt-bindir="$QT5_PREFIX/bin" \
+                      --with-boost="$BOOST_PREFIX" \
+                      BDB_LIBS="-L$BDB_PREFIX/lib -ldb_cxx" \
+                      BDB_CFLAGS="-I$BDB_PREFIX/include" \
+            || ( cat config.log && false )
+
+      - name: Build
+        run: |
+          make -j"$(sysctl -n hw.ncpu)" || ( echo "Build failure. Verbose build follows." && make V=1 ; false )
+
+      - name: Package app bundle
+        run: |
+          make appbundle
+          macdeployqt "$APP" -verbose=1
+          # macdeployqt does not follow @loader_path references between Boost
+          # dylibs, so the transitive Boost libraries libboost_thread needs
+          # (atomic, container, date_time) are missing from the bundle and the
+          # app fails at dyld time. Copy every @loader_path Boost referent that
+          # is absent and give it a matching install name.
+          fw="$APP/Contents/Frameworks"
+          for _pass in 1 2 3; do
+            missing=""
+            for dylib in "$fw"/*.dylib; do
+              for ref in $(otool -L "$dylib" | awk '/@loader_path\/libboost_/ {print $1}'); do
+                name="${ref#@loader_path/}"
+                [ -f "$fw/$name" ] || missing="$missing $name"
+              done
+            done
+            [ -z "$missing" ] && break
+            for name in $missing; do
+              echo "adding $name"
+              cp "$BOOST_PREFIX/lib/$name" "$fw/$name"
+              chmod u+w "$fw/$name"
+              install_name_tool -id "@loader_path/$name" "$fw/$name"
+            done
+          done
+          codesign --force --deep -s - "$APP"
+          ls -la "$fw"
+
+      - name: Verify bundle
+        run: |
+          bin="$APP/Contents/MacOS/Pepecoin-Qt"
+          fail=0
+          log() { echo "$@" | tee -a "$VERIFY_LOG"; }
+
+          log "== lipo -archs $bin"
+          archs="$(lipo -archs "$bin")"
+          log "$archs"
+          [ "$archs" = "arm64" ] || { log "FAIL: expected arm64, got '$archs'"; fail=1; }
+
+          log "== codesign --verify --deep --strict"
+          if codesign --verify --deep --strict --verbose=2 "$APP" 2>&1 | tee -a "$VERIFY_LOG"; then
+            log "codesign: valid"
+          else
+            log "FAIL: codesign verification failed"; fail=1
+          fi
+
+          log "== otool -L $bin"
+          otool -L "$bin" | tee -a "$VERIFY_LOG"
+          log "== otool -L libboost_thread"
+          otool -L "$APP"/Contents/Frameworks/libboost_thread*.dylib | tee -a "$VERIFY_LOG"
+
+          log "== checking every Mach-O in the bundle for references outside the bundle"
+          bad="$(find "$APP" -type f \( -perm -u+x -o -name '*.dylib' \) -exec sh -c 'file "$1" | grep -q Mach-O && otool -L "$1" | tail -n +2' _ {} \; \
+                 | awk '{print $1}' | grep -E '^(/opt/homebrew|/usr/local|/Users)' || true)"
+          if [ -n "$bad" ]; then
+            log "FAIL: unresolved references outside the bundle:"
+            log "$bad"
+            fail=1
+          else
+            log "no references to /opt/homebrew, /usr/local or /Users"
+          fi
+
+          log "== $bin -version"
+          set +e
+          perl -e 'alarm shift; exec @ARGV' 180 "$bin" -version 2>&1 | tee -a "$VERIFY_LOG"
+          rc=${PIPESTATUS[0]}
+          set -e
+          log "exit status: $rc"
+          [ "$rc" -eq 0 ] || { log "FAIL: -version exited $rc"; fail=1; }
+
+          exit "$fail"
+
+      - name: Create dmg
+        run: |
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+          short="$(git rev-parse --short "$GITHUB_SHA")"
+          dmg="Pepecoin-Qt-${version}-arm64-${short}.dmg"
+          rm -rf dmg-staging && mkdir dmg-staging
+          cp -R "$APP" dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "Pepecoin-Qt" -srcfolder dmg-staging -ov -format UDZO "$dmg"
+          shasum -a 256 "$dmg" | tee -a "$VERIFY_LOG"
+          echo "DMG=$dmg" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pepecoin-Qt-arm64-${{ github.sha }}
+          path: |
+            ${{ env.DMG }}
+            ${{ env.VERIFY_LOG }}
+          retention-days: 30
+          if-no-files-found: error
