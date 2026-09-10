@@ -12,6 +12,8 @@
 #include "bitcoin-config.h" // for USE_SSE2
 #endif
 
+#include "compat/endian.h" // for HAVE_DECL_LE32DEC / HAVE_DECL_LE32ENC
+
 static const int SCRYPT_SCRATCHPAD_SIZE = 131072 + 63;
 
 void scrypt_1024_1_1_256(const char *input, char *output);
@@ -36,14 +38,19 @@ void
 PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen, const uint8_t *salt,
     size_t saltlen, uint64_t c, uint8_t *buf, size_t dkLen);
 
-#if !defined(__FreeBSD__) && !defined(__APPLE__)
+// Some libcs declare le32dec/le32enc in <sys/endian.h> (FreeBSD, recent
+// macOS SDKs); configure records that as HAVE_DECL_LE32DEC/LE32ENC. Only
+// provide the fallbacks where the system does not, so the two never collide.
+#if HAVE_DECL_LE32DEC == 0
 static inline uint32_t le32dec(const void *pp)
 {
         const uint8_t *p = (uint8_t const *)pp;
         return ((uint32_t)(p[0]) + ((uint32_t)(p[1]) << 8) +
             ((uint32_t)(p[2]) << 16) + ((uint32_t)(p[3]) << 24));
 }
+#endif // HAVE_DECL_LE32DEC
 
+#if HAVE_DECL_LE32ENC == 0
 static inline void le32enc(void *pp, uint32_t x)
 {
         uint8_t *p = (uint8_t *)pp;
@@ -52,5 +59,5 @@ static inline void le32enc(void *pp, uint32_t x)
         p[2] = (x >> 16) & 0xff;
         p[3] = (x >> 24) & 0xff;
 }
-#endif
+#endif // HAVE_DECL_LE32ENC
 #endif // BITCOIN_CRYPTO_SCRYPT_H
