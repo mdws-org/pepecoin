@@ -93,7 +93,11 @@ jobs:
             for dylib in "$fw"/*.dylib; do
               for ref in $(otool -L "$dylib" | awk '/@loader_path\/libboost_/ {print $1}'); do
                 name="${ref#@loader_path/}"
-                [ -f "$fw/$name" ] || missing="$missing $name"
+                [ -f "$fw/$name" ] && continue
+                case " $missing " in
+                  *" $name "*) ;;
+                  *) missing="$missing $name" ;;
+                esac
               done
             done
             [ -z "$missing" ] && break
@@ -130,9 +134,19 @@ jobs:
           log "== otool -L libboost_thread"
           otool -L "$APP"/Contents/Frameworks/libboost_thread*.dylib | tee -a "$VERIFY_LOG"
 
-          log "== checking every Mach-O in the bundle for references outside the bundle"
-          bad="$(find "$APP" -type f \( -perm -u+x -o -name '*.dylib' \) -exec sh -c 'file "$1" | grep -q Mach-O && otool -L "$1" | tail -n +2' _ {} \; \
-                 | awk '{print $1}' | grep -E '^(/opt/homebrew|/usr/local|/Users)' || true)"
+          log "== checking every Mach-O in the bundle for load commands that point outside the bundle"
+          # Only LC_LOAD_DYLIB / LC_LOAD_WEAK_DYLIB / LC_REEXPORT_DYLIB matter here;
+          # a plugin's own LC_ID_DYLIB keeps its Homebrew path and is never resolved.
+          bad=""
+          while IFS= read -r -d '' f; do
+            file "$f" | grep -q Mach-O || continue
+            refs="$(otool -l "$f" \
+                    | awk '/LC_LOAD_DYLIB|LC_LOAD_WEAK_DYLIB|LC_REEXPORT_DYLIB/ {f=1} f && $1 == "name" {print $2; f=0}' \
+                    | grep -E '^(/opt/homebrew|/usr/local|/Users)' || true)"
+            if [ -n "$refs" ]; then
+              bad="$bad$f:"$'\n'"$refs"$'\n'
+            fi
+          done < <(find "$APP" -type f \( -perm -u+x -o -name '*.dylib' \) -print0)
           if [ -n "$bad" ]; then
             log "FAIL: unresolved references outside the bundle:"
             log "$bad"
