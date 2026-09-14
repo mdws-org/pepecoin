@@ -1,14 +1,20 @@
 name: Continuous Integration
 
+# Every job in this matrix asks for the ubuntu-20.04 runner image, which GitHub
+# has retired. A job requesting a retired label is never assigned a runner: it
+# sits queued until the 24-hour ceiling and is then cancelled, so each push cost
+# eleven queued jobs and produced no result. The matrix also drives the
+# depends/ cross-compile tree, which is Intel-only and pinned to macOS SDK
+# 10.11, and it has never completed a run in this fork.
+#
+# Rather than delete inherited coverage, it runs on request only. Reviving it
+# means updating both the runner images and the depends tree. The platform this
+# fork actually builds and ships is covered by macos-arm64.yml.
 on:
-  push:
-    paths-ignore:
-      - '**/*.md'
-  pull_request:
-    paths-ignore:
-      - 'doc/**'
-      - 'contrib/**'
-      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
