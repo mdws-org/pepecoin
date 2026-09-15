@@ -111,6 +111,21 @@ jobs:
               install_name_tool -id "@loader_path/$name" "$fw/$name"
             done
           done
+          # Strip rpaths that point outside the bundle. macdeployqt leaves build
+          # machine paths behind; they are meaningless on a user's machine, and
+          # they let any unresolved @rpath reference load a second copy of a
+          # framework that is already bundled.
+          while IFS= read -r -d '' f; do
+            file "$f" | grep -q Mach-O || continue
+            for rp in $(otool -l "$f" | awk '/LC_RPATH/{r=1} r && $1 == "path" {print $2; r=0}' \
+                        | grep -E '^(/opt/homebrew|/usr/local|/Users)' || true); do
+              echo "deleting rpath $rp from ${f#$APP/}"
+              install_name_tool -delete_rpath "$rp" "$f" 2>/dev/null || true
+            done
+          done < <(find "$APP" -type f \( -perm -u+x -o -name '*.dylib' \) -print0)
+
+          # Signed last: every install_name_tool edit above invalidates a
+          # signature already present.
           codesign --force --deep -s - "$APP"
           ls -la "$fw"
 
@@ -136,6 +151,43 @@ jobs:
           otool -L "$bin" | tee -a "$VERIFY_LOG"
           log "== otool -L libboost_thread"
           otool -L "$APP"/Contents/Frameworks/libboost_thread*.dylib | tee -a "$VERIFY_LOG"
+
+          log "== checking for rpaths that point outside the bundle"
+          # A leftover rpath into the build machine's Homebrew tree is meaningless
+          # on a user's machine, and it lets any unresolved @rpath reference load
+          # a second copy of a framework that is already bundled.
+          badrp=""
+          while IFS= read -r -d '' f; do
+            file "$f" | grep -q Mach-O || continue
+            rps="$(otool -l "$f" | awk '/LC_RPATH/{r=1} r && $1 == "path" {print $2; r=0}' \
+                   | grep -E '^(/opt/homebrew|/usr/local|/Users)' || true)"
+            [ -n "$rps" ] && badrp="$badrp${f#$APP/}: $rps"$'\n'
+          done < <(find "$APP" -type f \( -perm -u+x -o -name '*.dylib' \) -print0)
+          if [ -n "$badrp" ]; then
+            log "FAIL: rpaths pointing outside the bundle:"
+            log "$badrp"
+            fail=1
+          else
+            log "no rpaths outside the bundle"
+          fi
+
+          log "== checking every bundled plugin resolves its frameworks inside the bundle"
+          badpl=""
+          for plugin in "$APP"/Contents/PlugIns/*/*.dylib; do
+            [ -e "$plugin" ] || continue
+            for ref in $(otool -L "$plugin" | awk '/@rpath\/.*\.framework/ {print $1}'); do
+              name="${ref#@rpath/}"; name="${name%%.framework*}"
+              [ -d "$APP/Contents/Frameworks/$name.framework" ] || \
+                badpl="$badpl$(basename "$plugin") needs $name.framework"$'\n'
+            done
+          done
+          if [ -n "$badpl" ]; then
+            log "FAIL: plugins whose frameworks are not bundled:"
+            log "$badpl"
+            fail=1
+          else
+            log "every plugin's frameworks are bundled"
+          fi
 
           log "== checking every Mach-O in the bundle for load commands that point outside the bundle"
           # Only LC_LOAD_DYLIB / LC_LOAD_WEAK_DYLIB / LC_REEXPORT_DYLIB matter here;
