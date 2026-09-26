@@ -4,6 +4,41 @@
 Pepecoin Core [PEPE, Ᵽ]
 </h1>
 
+## Fork of pepecoinppc/pepecoin
+
+This repository continues [pepecoinppc/pepecoin](https://github.com/pepecoinppc/pepecoin). It is maintained in the [mdws-org](https://github.com/mdws-org) organization and has no affiliation with the Pepecoin project. Do not contact the Pepecoin project about this build.
+
+Forked from upstream commit `4fb5a0cd9` (2024-12-16).
+
+Upstream Pepecoin Core does not provide an Apple Silicon build, and its bundled cross-compile tree targets Intel against an old macOS SDK. This fork adds a native Apple Silicon build of `pepecoind`, `pepecoin-cli`, `pepecoin-tx` and `Pepecoin-Qt`. Continuous integration builds the bundle on every push, then checks that it is arm64, that its Berkeley DB version keeps `wallet.dat` compatible, and that no part of it loads a library from outside the bundle other than the system frameworks.
+
+Code in this repository is written with AI assistance and reviewed by one maintainer. It has had no independent security audit. The dmg attached to each CI run is build output, not a reviewed release.
+
+This software is provided as is, with no warranty and no support commitment. Back up your wallet before you install it.
+
+### Install
+
+No release is published yet. CI attaches a dmg to each run on the [Actions tab](https://github.com/mdws-org/pepecoin/actions). Released builds will appear on the [releases page](https://github.com/mdws-org/pepecoin/releases).
+
+These builds carry an ad-hoc signature. They are not signed with an Apple Developer ID and are not notarized, so Gatekeeper refuses to open them.
+
+1. Drag the app to your Applications folder. Do not open it from the mounted disk image. macOS runs a quarantined app from a temporary read-only location.
+2. Open the app once and dismiss the warning.
+3. Open System Settings, go to Privacy and Security, and scroll to Security.
+4. Select Open Anyway, then enter your login password.
+
+The Open Anyway button appears for about an hour after the blocked launch. If it is gone, open the app again to bring it back.
+
+### Report a problem
+
+Open an issue on [this repository](https://github.com/mdws-org/pepecoin/issues). For a security vulnerability, report it privately through [GitHub private vulnerability reporting](https://github.com/mdws-org/pepecoin/security/advisories/new). Do not open a public issue.
+
+---
+
+Everything below this line is the upstream Pepecoin Core README, kept as it was written. Its links, chat rooms, issue tracker and contribution instructions all belong to the upstream project. Do not use them to report anything about this fork or its macOS build.
+
+---
+
 Select language: EN | [CN](./README_zh_CN.md) | [PT](./README_pt_BR.md) | [FA](./README_fa_IR.md) | [VI](./README_vi_VN.md) | [FR](./README_fr_FR.md) | [JA](./README_ja_JP.md) | [DE](./README_de_DE.md)
 
 Pepecoin is a community focused cryptocurrency created by one of the original Dogecoin shibes from 2013. It was created for one purpose, to create a new and fun community just like the original Dogecoin community.
