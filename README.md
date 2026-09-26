@@ -18,16 +18,9 @@ This software is provided as is, with no warranty and no support commitment. Bac
 
 ### Install
 
-No release is published yet. CI attaches a dmg to each run on the [Actions tab](https://github.com/mdws-org/pepecoin/actions). Released builds will appear on the [releases page](https://github.com/mdws-org/pepecoin/releases).
+Releases are on the [releases page](https://github.com/mdws-org/pepecoin/releases), starting with `v1.1.0-mdws.1`. Each release dmg is signed with a Developer ID (Benjamin Meadows, team CY9SLX2KFM) and notarized by Apple, so Gatekeeper opens it without a warning. Drag the app to your Applications folder before you open it. Do not open it from the mounted disk image: macOS runs a downloaded app from a temporary read-only location, and the wallet can fail to find its data directory.
 
-These builds carry an ad-hoc signature. They are not signed with an Apple Developer ID and are not notarized, so Gatekeeper refuses to open them.
-
-1. Drag the app to your Applications folder. Do not open it from the mounted disk image. macOS runs a quarantined app from a temporary read-only location.
-2. Open the app once and dismiss the warning.
-3. Open System Settings, go to Privacy and Security, and scroll to Security.
-4. Select Open Anyway, then enter your login password.
-
-The Open Anyway button appears for about an hour after the blocked launch. If it is gone, open the app again to bring it back.
+CI also attaches a dmg to each run on the [Actions tab](https://github.com/mdws-org/pepecoin/actions). Those dmgs carry only an ad-hoc signature, and Gatekeeper refuses to open them. Install a release instead.
 
 ### Report a problem
 
